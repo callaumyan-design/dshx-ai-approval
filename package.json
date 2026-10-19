@@ -1,0 +1,52 @@
+{
+  "name": "dshx-ai-approval",
+  "version": "1.4.0",
+  "description": "Adds an AI-reviewed sandbox escalation permission preset to DSH.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis"
+  ],
+  "author": "callaumyan-design",
+  "license": "MIT",
+  "homepage": "https://github.com/callaumyan-design/dshx-ai-approval#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/callaumyan-design/dshx-ai-approval.git"
+  },
+  "bugs": {
+    "url": "https://github.com/callaumyan-design/dshx-ai-approval/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "client.js",
+    "cordis.patch.yml",
+    "index.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    },
+    "marketplace": {
+      "profiles": [
+        "web",
+        "desktop"
+      ],
+      "requiresBuildApproval": false,
+      "requiresRestart": true,
+      "manualSteps": false
+    }
+  }
+}

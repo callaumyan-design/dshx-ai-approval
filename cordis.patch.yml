@@ -1,0 +1,18 @@
+# 增加独立的 AI 审批权限预设（原有三档保留），并设为新会话的默认权限。
+# 注意：patch 会整体替换 permission 行的 config，所以三档内置预设需在此重述。
+# 用户在设置里另选默认权限（settings.yaml 的 permission.defaultPreset）时以用户为准。
+- id: permission
+  config:
+    defaultPreset: ai-approval
+    presets:
+      read-only: { sandbox: read-only, approval: ask }
+      workspace-write: { sandbox: workspace-write, approval: ask }
+      danger-full-access: { sandbox: danger-full-access, approval: never }
+      ai-approval:
+        sandbox: workspace-write
+        approval: ask
+        name: 由 AI 审批
+        description: 工作区内正常操作，越权操作交由 AI 单次审批
+- insert:
+    - id: dshx-ai-approval
+      name: dshx-ai-approval
