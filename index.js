@@ -31,6 +31,9 @@ export const Config = z.object({
 })
 
 const PRESET = 'ai-approval'
+// Shared with dshx-remote (registry symbols; neither package imports the other).
+const HUMAN_HOOK = Symbol.for('dshx.approval.human')
+const AI_HANDOFF = Symbol.for('dshx.approval.ai-handoff')
 const ROUTE = '/dshx-ai-approval/config'
 const PROBE_ROUTE = '/dshx-ai-approval/probe'
 const MODELS_ROUTE = '/dshx-ai-approval/models'
@@ -206,9 +209,32 @@ export function apply(ctx, config = {}) {
   ctx.on('approval/request', async function (req, next) {
     if (!isAiSession(ctx, req.agent.session)) return next()
     const outcome = await decideAutomatically(ctx, req)
-    if (outcome === 'allowed-once' || outcome === 'cancelled') return outcome
-    const human = await next()
-    record({ toolName: req.toolName, reason: String(req.reason ?? '').slice(0, 300), outcome: human, detail: 'human decision after AI ' + outcome })
+    // Only an AI ALLOW is final. Everything else — a DENY, an inconclusive
+    // review, or `cancelled` — reaches the human stage.
+    //
+    // `cancelled` is NOT a human decision: the host documents it as "aborting
+    // withdraws the question" (dsh-user-approval README). Returning it here
+    // used to skip next() entirely, so the tool failed with "approval … was
+    // cancelled" and no card was ever rendered — the conversation just hung.
+    // A cancelled review must therefore re-ask, not decide.
+    if (outcome === 'allowed-once') return outcome
+    const base = { toolName: req.toolName, reason: String(req.reason ?? '').slice(0, 300) }
+    // A review cancelled by an aborted signal leaves req.signal already aborted.
+    // Handing that to the human stage makes every downstream answerer bail out
+    // immediately (the gateway's PendingApproval calls abort() on the spot), so
+    // no card is rendered and the request resolves `cancelled` again. Swap in a
+    // live signal for the human ask; the original turn's abort is already
+    // reported through the review outcome we just logged.
+    if (req.signal?.aborted) {
+      try { req.signal = new AbortController().signal } catch { /* frozen request */ }
+    }
+    // Hand-off to the human stage. dshx-remote (phone) joins here: when it ran
+    // before us it left a hook that races the phone against next(); when it
+    // runs after us the marker tells it the human stage has begun.
+    const hook = req[HUMAN_HOOK]
+    try { req[AI_HANDOFF] = outcome ?? 'inconclusive' } catch { /* frozen request */ }
+    const human = typeof hook === 'function' ? await hook(next) : await next()
+    record({ ...base, outcome: human, detail: 'human decision after AI ' + (outcome ?? 'inconclusive') })
     return human
   }, { prepend: true })
 

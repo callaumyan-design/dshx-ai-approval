@@ -121,10 +121,26 @@ h = hook(['DENY']); assert.equal(await h.listener(aiReq, human), 'allowed-once')
 h = hook(['maybe', 'unsure']); assert.equal(await h.listener(aiReq, human), 'allowed-once'); assert.equal(humanCalls, 2); assert.equal(h.streams, 2)
 h = hook([], { provider: '', model: '' }); assert.equal(await h.listener(aiReq, human), 'allowed-once'); assert.equal(h.streams, 0); assert.equal(humanCalls, 3)
 h = hook(['DENY']); assert.equal(await h.listener(aiReq, () => 'rejected'), 'rejected')
+// A review cancelled by an aborted request must reach the human stage, not
+// decide the tool call. Returning `cancelled` skipped next() entirely, so the
+// tool failed with "approval … was cancelled" and no card was ever rendered.
+{
+  const before = humanCalls
+  const controller = new AbortController()
+  const cancelledReq = { agent: { session: aiSession }, toolName: 'pwsh', reason: 'aborted mid-review', signal: controller.signal }
+  h = hook([new Error('aborted')])
+  // Abort while the reviewer is streaming: review() reports 'cancelled'.
+  const pending = h.listener(cancelledReq, () => { humanCalls++; return 'allowed-once' })
+  controller.abort(new Error('turn killed'))
+  assert.equal(await pending, 'allowed-once', 'cancelled review is re-asked of the human')
+  assert.equal(humanCalls, before + 1)
+  // The human stage must get a live signal, or every answerer bails out at once.
+  assert.equal(cancelledReq.signal.aborted, false, 'aborted signal replaced for the human ask')
+}
 // Non-AI sessions go straight to the human channel.
 h = hook(['ALLOW'])
 assert.equal(await h.listener({ agent: { session: {} }, toolName: 'pwsh' }, () => { humanCalls++; return 'rejected' }), 'rejected')
-assert.equal(humanCalls, 4); assert.equal(h.streams, 0)
+assert.equal(humanCalls, 5); assert.equal(h.streams, 0)
 void decideAutomatically
 
 // Bundle patch: AI approval is the default preset for new sessions and the
